@@ -1,4 +1,5 @@
 service:
   port: 8999
-  type: LoadBalancer
+  nodePort: 8999
+  type: NodePort
 

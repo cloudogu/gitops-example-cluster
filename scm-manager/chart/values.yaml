@@ -44,6 +44,8 @@ service:
   type: LoadBalancer
   # service.port -- k8s service port
   port: 80
+  # service.nodePort -- k8s service node port
+  #nodePort:
 
 ingress:
   # ingress.enabled -- Enables ingress

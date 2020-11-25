@@ -3,6 +3,7 @@ image:
 
 service:
   port: 9091
+  nodePort: 9091
 
 persistence:
   size: 1Gi

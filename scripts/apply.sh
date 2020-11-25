@@ -28,6 +28,7 @@ function main() {
   INSTALL_ARGOCD=$5
 
   if [[ $DEBUG = true ]]; then
+    set -x
     applyBasicK8sResources
     initSCMM
 

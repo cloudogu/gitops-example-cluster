@@ -2,31 +2,35 @@
 set -o errexit -o nounset -o pipefail
 #set -x
 
+# TODO replace apply.sh with k3d or provide both options?
+K3D_VERSION=3.3.0
+K3D_CLUSTER_NAME=k8s-gitops-playground
 # See https://github.com/rancher/k3s/releases
-K3S_VERSION=1.18.8+k3s1
-K3S_CLUSTER_NAME=k8s-gitops-playground
-HELM_VERSION=3.4.0
-HELM_INSTALL_DIR='/usr/local/bin'
-HELM_BINARY_NAME='helm'
+K3S_VERSION=1.19.3-k3s3
+HELM_VERSION=3.4.1
 KUBECTL_VERSION=1.19.3
+
+BASEDIR=$(dirname $0)
+ABSOLUTE_BASEDIR="$(cd ${BASEDIR} && pwd)"
+source ${ABSOLUTE_BASEDIR}/utils.sh
 
 function main() {
   checkDockerAccessible
-  
+
   # Install kubectl if necessary
-  if command -v kubectl; then
+  if command -v kubectl >/dev/null 2>&1; then
     echo "kubectl already installed"
   else
     msg="Install kubectl ${KUBECTL_VERSION}?"
-      confirm "$msg" ' [y/n]' &&
-        installKubectl
+    confirm "$msg" ' [y/n]' &&
+      installKubectl
   fi
 
   # Install helm if necessary
-  if [[ ! -f ${HELM_INSTALL_DIR}/${HELM_BINARY_NAME} ]]; then
+  if ! command -v helm >/dev/null 2>&1; then
     installHelm
   else
-    ACTUAL_HELM_VERSION=$("${HELM_INSTALL_DIR}/${HELM_BINARY_NAME}" version --template="{{ .Version }}")
+    ACTUAL_HELM_VERSION=$(helm version --template="{{ .Version }}")
     echo "helm ${ACTUAL_HELM_VERSION} already installed"
     if [[ "$ACTUAL_HELM_VERSION" != "v$HELM_VERSION" ]]; then
       msg="Up-/downgrade from ${ACTUAL_HELM_VERSION} to ${HELM_VERSION}?"
@@ -35,26 +39,25 @@ function main() {
     fi
   fi
 
-  # Install k3s if necessary
-  if command -v k3s >/dev/null 2>&1; then
-    ACTUAL_K3S_VERSION="$(k3s --version | grep k3s | sed 's/k3s version v\(.*\) (.*/\1/')"
-    echo "k3s ${ACTUAL_K3S_VERSION} already installed"
-    if [[ "${K3S_VERSION}" != "${ACTUAL_K3S_VERSION}" ]]; then
-      msg="Up-/downgrade from ${ACTUAL_K3S_VERSION} to ${K3S_VERSION}?"
-    else
-      msg="Reinstall?"
-    fi
-    confirm "$msg" 'Note: Applications will not be deleted. For deleting call "k3s-uninstall.sh" in advance.' ' [y/n]' &&
-      installK3s
-
+  # Install k3d if necessary
+  if ! command -v k3d >/dev/null 2>&1; then
+    installK3d
   else
-    installK3s
+    ACTUAL_K3D_VERSION="$(k3d --version | grep k3d | sed 's/k3d version v\(.*\)/\1/')"
+    echo "k3d ${ACTUAL_K3D_VERSION} already installed"
+    if [[ "${K3D_VERSION}" != "${ACTUAL_K3D_VERSION}" ]]; then
+      msg="Up-/downgrade from ${ACTUAL_K3D_VERSION} to ${K3D_VERSION}?"
+      confirm "$msg" ' [y/n]' &&
+        installK3d
+    fi
   fi
+  
+  createCluster
 }
 
 function checkDockerAccessible() {
   if ! command -v docker >/dev/null 2>&1; then
-    echo "Docker not installed" 
+    echo "Docker not installed"
     exit 1
   fi
 }
@@ -72,56 +75,68 @@ function installHelm() {
     bash -s -- --version v$HELM_VERSION
 }
 
-function installK3s() {
+function installK3d() {
+  curl -s https://raw.githubusercontent.com/rancher/k3d/main/install.sh | TAG=v${K3D_VERSION} bash
+}
+
+function createCluster() {
   # More info:
   # * On Commands: https://k3s.io/usage/commands/
   # * On exposing services: https://github.com/rancher/k3s/blob/v3.0.1/docs/usage/guides/exposing_services.md
-  K3S_ARGS=(# Use local docker daemon, so local images can be used within cluster and jenkins can also use docker
-    '--docker'
-    # Enable APIs deprecated in K8s 1.16 in order to improve compatibility with apps
-    '--kube-apiserver-arg=runtime-config=apps/v1beta1=true,apps/v1beta2=true,extensions/v1beta1/daemonsets=true,extensions/v1beta1/deployments=true,extensions/v1beta1/replicasets=true,extensions/v1beta1/networkpolicies=true,extensions/v1beta1/podsecuritypolicies=true'
-    # Allow for using node ports with "smaller numbers"
-    '--kube-apiserver-arg=service-node-port-range=8010-32767'
-    # Allow accessing KUBECONFIG as non-root
-    '--write-kubeconfig-mode=755'
+  K3S_ARGS=(
+    "--image docker.io/rancher/k3s:v${K3S_VERSION}"
     # Save some resources
-    '--no-deploy=traefik'
-    '--no-deploy=metrics-server'
+    '--k3s-server-arg=--no-deploy=metrics-server'
+    # TODO traefik seems to run anyway!?
+    '--k3s-server-arg=--no-deploy=traefik"'
+    # TODO do we need the service LB or switch to nodePorts in order to avoid binding to external Host IP?
+    #'--k3s-server-arg=--no-deploy=servicelb"'
+    # Allow for using node ports with "smaller numbers"
+    '--k3s-server-arg=--kube-apiserver-arg=service-node-port-range=8010-32767'
+    '-v /var/run/docker.sock:/var/run/docker.sock'
+    '-v /tmp/k8s-gitops-playground-jenkins-agent:/tmp/k8s-gitops-playground-jenkins-agent'
+    '-v /usr/bin/docker:/usr/bin/docker'
+    # Bind to host directly. Works only on linux, alternative: '--port' every single port we need, or via serviceLB
+    '--network=host'
+    # no hostip avoids the error bellow:
+    # But: Is it the reason why the serviceLB binds to external-ip only and not to localhost?
+    # INFO[0006] (Optional) Trying to get IP of the docker host and inject it into the cluster as 'host.k3d.internal' for easy access
+    #panic: runtime error: index out of range [0] with length 0
+    #
+    #goroutine 1 [running]:
+    #github.com/rancher/k3d/v3/pkg/runtimes/docker.GetGatewayIP(0x11ca660, 0xc0000b8000, 0xc0003a1c40, 0x40, 0x0, 0xc0004611e8, 0x46f3d2, 0x2, 0xfdd920)
+    #        /drone/src/pkg/runtimes/docker/network.go:118 +0x20c
+    '--no-hostip'
   )
 
-  echo "Installing and starting k3s cluster (${K3S_VERSION}) via k3s."
-  echo "To stop the cluster and all workloads use: k3s-killall.sh && docker ps -qf 'name=k8s_*' | xargs -I{} docker rm -f {}"
-  echo "To restart the cluster use: sudo systemctl start k3s"
-  echo "To uninstall the cluster use: k3s-uninstall.sh"
+  if k3d cluster list | grep ${K3D_CLUSTER_NAME} >/dev/null; then
+    if confirm "Cluster '${K3D_CLUSTER_NAME}' already exists. Delete and re-create?" ' [y/N]'; then
+      k3d cluster delete $K3D_CLUSTER_NAME
+    else
+      echo "Not reinstalled."
+      exit 0
+    fi
+  fi
+
+  echo "Installing and starting k3d cluster ( k3d ${K3D_VERSION}, k3s ${K3S_VERSION})"
+  echo "To stop the cluster and all workloads use: k3d cluster stop ${K3D_CLUSTER_NAME}"
+  echo "To restart the cluster use: k3d cluster start ${K3D_CLUSTER_NAME}"
+  echo "To uninstall the cluster use: k3d cluster delete ${K3D_CLUSTER_NAME}"
   echo
-  curl -sfL https://get.k3s.io |
-    INSTALL_K3S_VERSION="v${K3S_VERSION}" \
-      INSTALL_K3S_EXEC="${K3S_ARGS[*]}" \
-      sh -s -
 
-  # Add kubeconfig, after renaming it to not be called "default"
-  # Renaming via k3s is not possible https://github.com/rancher/k3s/issues/1806
-  tmpConfig=$(mktemp)
-  sed </etc/rancher/k3s/k3s.yaml "s/: default/: ${K3S_CLUSTER_NAME}/" >"$tmpConfig"
-  # Don't fail when there is no .kube dir
-  mkdir -p ~/.kube
-  KUBECONFIG=${tmpConfig}:~/.kube/config kubectl config view --flatten >~/.kube/config2 && mv ~/.kube/config2 ~/.kube/config
-}
+  k3d cluster create ${K3D_CLUSTER_NAME} ${K3S_ARGS[*]}
 
-confirm() {
-  # shellcheck disable=SC2145
-  # - the line break between args is intended here!
-  printf "%s\n" "${@:-Are you sure? [y/N]} "
+  # Preload images
+  # Otherwise really slow startup because of image pulls. 4 min for jenkins, another  3min for agent image
+  # TODO We have to parse them from the helm charts (e.g. helm template) or define the versions in a common bash file 
+  # and pass them to helm install :-/
+  IMPORT_IMAGES=(
+    'jenkins/inbound-agent:4.6-1-jdk11'
+    'jenkins/jenkins:2.249.3-lts-jdk11'
+  )
+  k3d image import -c k8s-gitops-playground ${IMPORT_IMAGES[*]}
 
-  read -r response
-  case "$response" in
-  [yY][eE][sS] | [yY])
-    true
-    ;;
-  *)
-    false
-    ;;
-  esac
+  k3d kubeconfig merge ${K3D_CLUSTER_NAME} --switch-context
 }
 
 main "$@"

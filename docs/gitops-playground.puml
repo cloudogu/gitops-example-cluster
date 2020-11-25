@@ -21,13 +21,14 @@ node "Your Host" as host <<$computer>> #ffffff {
 
     rectangle "<$docker>\nDocker Daemon" as docker
     
-    rectangle "<$k8s>\nK3s Cluster" as k8s {
+    rectangle "<$k8s>\nK3d Container" as k8s {
         rectangle "<$sync>\nGitOps-Operator" as gitops
         
         together {
             rectangle "<$box>\nOCI Registry" as registry
             rectangle "<$k8s>\nAPI-Server" as apiServer
             rectangle "<$k8s>\nkubelet" as kubelet
+            rectangle "<$docker>\ncontainerd daemon" as containerd
         }
         
         rectangle "<$scm>\nSCM-Manager" as scmm {
@@ -40,12 +41,13 @@ node "Your Host" as host <<$computer>> #ffffff {
     }
 }
 
+docker -> k8s : run
 appRepo -[hidden]> configRepo
 appRepo <-- jenkinsNode : pull
 configRepo <-- jenkinsNode : push
 registry <-- jenkinsNode : push
 
-kubelet --> docker : run containers
+kubelet --> containerd : run containers
 jenkins -> jenkinsNode : manage
 jenkinsNode -> docker: run containers\nbuild images
 gitops --> configRepo : pull

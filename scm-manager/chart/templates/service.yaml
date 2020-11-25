@@ -38,6 +38,9 @@ spec:
       targetPort: 8080
       protocol: TCP
       name: http
+      {{- if (not (empty .Values.service.nodePort)) }}
+      nodePort: {{ .Values.service.nodePort }}
+      {{- end }}
   selector:
     app: {{ include "scm-manager.name" . }}
     release: {{ .Release.Name }}
