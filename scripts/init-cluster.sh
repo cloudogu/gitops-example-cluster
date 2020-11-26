@@ -98,10 +98,28 @@ function createCluster() {
     '-v /var/run/docker.sock:/var/run/docker.sock'
     '-v /tmp/k8s-gitops-playground-jenkins-agent:/tmp/k8s-gitops-playground-jenkins-agent'
     '-v /usr/bin/docker:/usr/bin/docker'
-    # TODO let the user choose the option?
+
+    # TODO let the user choose from these networking options?
     # Bind to host directly. Works only on linux, alternative: '--port' every single port we need, or via serviceLB
     #'--network=host'
     # Starting k3d in in its own network results in having a fixed IP address. Linux users could use it instead of binding
+    # to localhost. All address will be reachable via $K3D_SUBNET's first IP address, e.g. 172.31.0.2
+    # TODO If this is used "localhost" has to be replaced by this ip in apply.sh. 
+    #"--network=${K3D_CLUSTER_NAME}" '--port 8999:8999@loadbalancer' # we still need to bind the registry's port (so that the docker daemon can push to localhost:8999/imagename
+
+    # Solution for windows and mac TODO can we get them from a list?
+    '--port 8999:8999@loadbalancer'
+    '--port 9000:9000@loadbalancer'
+    '--port 9001:9001@loadbalancer'
+    '--port 9002:9002@loadbalancer'
+    '--port 9003:9003@loadbalancer'
+    '--port 9010:9010@loadbalancer'
+    '--port 9011:9011@loadbalancer'
+    '--port 9020:9020@loadbalancer'
+    '--port 9021:9021@loadbalancer'
+    '--port 9090:9090@loadbalancer'
+    '--port 9091:9091@loadbalancer'
+
     # to localhost. All address will be reachable via $K3D_SUBNET's first IP address, e.g. 172.31.0.2
     # TODO If this is used "localhost" has to be replaced by this ip in apply.sh. 
     "--network=${K3D_CLUSTER_NAME}" '--port 8999:8999@loadbalancer' # we still need to bind the registry's port (so that the docker daemon can push to localhost:8999/imagename

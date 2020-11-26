@@ -369,6 +369,9 @@ while true; do
   esac
 done
 
+# TODO instead we could just set the kubeconfig context we create in init-cluster.sh
+# Or ask current context or init-cluster context -> default init-cluster
+# This might depend on k3s vs k3d (or we use the same name and define it in utils.sh)
 confirm "Applying gitops playground to kubernetes cluster: '$(kubectl config current-context)'." 'Continue? y/n [n]' ||
   exit 0
 
