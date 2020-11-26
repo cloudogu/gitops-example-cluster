@@ -63,12 +63,14 @@ function main() {
     initJenkins > /dev/null 2>&1 & spinner "Starting Jenkins..."
   fi
 
-  # Create Jenkins agent working dir explicitly. Otherwise it seems to be owned by root
-  mkdir -p ${JENKINS_HOME}
   printWelcomeScreen
 }
 
 function applyBasicK8sResources() {
+
+  # Create Jenkins agent working dir explicitly. Otherwise it seems to be owned by root
+  mkdir -p ${JENKINS_HOME}
+
   kubectl apply -f k8s-namespaces || true
 
   createScmmSecrets
@@ -80,6 +82,7 @@ function applyBasicK8sResources() {
   helm repo add stable https://charts.helm.sh/stable
   helm repo add argo https://argoproj.github.io/argo-helm
   helm repo add bitnami https://charts.bitnami.com/bitnami
+  helm repo update
 
   helm upgrade -i docker-registry --values docker-registry/values.yaml --version 1.9.4 stable/docker-registry -n default
 }

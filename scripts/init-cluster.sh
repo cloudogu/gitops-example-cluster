@@ -134,6 +134,9 @@ function createCluster() {
     'jenkins/inbound-agent:4.6-1-jdk11'
     'jenkins/jenkins:2.249.3-lts-jdk11'
   )
+  for i in "${IMPORT_IMAGES[@]}"; do
+     docker pull "${i}"
+  done
   k3d image import -c k8s-gitops-playground ${IMPORT_IMAGES[*]}
 
   k3d kubeconfig merge ${K3D_CLUSTER_NAME} --switch-context
