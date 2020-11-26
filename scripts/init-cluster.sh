@@ -5,8 +5,10 @@ set -o errexit -o nounset -o pipefail
 # TODO replace apply.sh with k3d or provide both options?
 K3D_VERSION=3.3.0
 K3D_CLUSTER_NAME=k8s-gitops-playground
+K3D_SUBNET=172.31.0.0/24
 # See https://github.com/rancher/k3s/releases
 K3S_VERSION=1.19.3-k3s3
+
 HELM_VERSION=3.4.1
 KUBECTL_VERSION=1.19.3
 
@@ -96,8 +98,13 @@ function createCluster() {
     '-v /var/run/docker.sock:/var/run/docker.sock'
     '-v /tmp/k8s-gitops-playground-jenkins-agent:/tmp/k8s-gitops-playground-jenkins-agent'
     '-v /usr/bin/docker:/usr/bin/docker'
+    # TODO let the user choose the option?
     # Bind to host directly. Works only on linux, alternative: '--port' every single port we need, or via serviceLB
-    '--network=host'
+    #'--network=host'
+    # Starting k3d in in its own network results in having a fixed IP address. Linux users could use it instead of binding
+    # to localhost. All address will be reachable via $K3D_SUBNET's first IP address, e.g. 172.31.0.2
+    # TODO If this is used "localhost" has to be replaced by this ip in apply.sh. 
+    "--network=${K3D_CLUSTER_NAME}" '--port 8999:8999@loadbalancer' # we still need to bind the registry's port (so that the docker daemon can push to localhost:8999/imagename
     # no hostip avoids the error bellow:
     # But: Is it the reason why the serviceLB binds to external-ip only and not to localhost?
     # INFO[0006] (Optional) Trying to get IP of the docker host and inject it into the cluster as 'host.k3d.internal' for easy access
@@ -112,6 +119,7 @@ function createCluster() {
   if k3d cluster list | grep ${K3D_CLUSTER_NAME} >/dev/null; then
     if confirm "Cluster '${K3D_CLUSTER_NAME}' already exists. Delete and re-create?" ' [y/N]'; then
       k3d cluster delete $K3D_CLUSTER_NAME
+      docker network rm ${K3D_CLUSTER_NAME} > /dev/null || true
     else
       echo "Not reinstalled."
       exit 0
@@ -124,6 +132,8 @@ function createCluster() {
   echo "To uninstall the cluster use: k3d cluster delete ${K3D_CLUSTER_NAME}"
   echo
 
+  docker network rm ${K3D_CLUSTER_NAME} > /dev/null || true
+  docker network create --subnet=${K3D_SUBNET} ${K3D_CLUSTER_NAME} > /dev/null
   k3d cluster create ${K3D_CLUSTER_NAME} ${K3S_ARGS[*]}
 
   # Preload images
