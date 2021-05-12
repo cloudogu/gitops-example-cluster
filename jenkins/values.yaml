@@ -4,19 +4,48 @@ dockerClientVersion: 19.03.9
 controller:
   # to prevent the jenkins-ui-test pod being created
   testEnabled: false
+
+  # seems to do the trick with failing plugin installs
+  overwritePlugins: true
+
   # Use deterministic version and not "lts", which is pretty much the same as "latest".
   # Note: When updating, check if PATH of image still matches the one listed in "containerEnv"
-  #
-  # Update (07.Mai.2021): We use the chart default since the jdk11 image has caused some problems 
-  # regarding consistency with jenkins plugins. Some plugins were not pinned to a version and needed 
-  # a constant update if there was a new version available.
-  #
-  # tag: 2.277.2-lts-jdk11
+  tag: 2.277.4-lts-jdk11
 
   serviceType: LoadBalancer
   servicePort: 80
   # Is ignored when type is LoadBalancer. For local cluster we change the service type to NodePort
   nodePort: 9090
+
+  installPlugins:
+    - kubernetes:1.29.2
+    - workflow-aggregator:2.6
+    - git:4.7.1
+    - configuration-as-code:1.51
+
+  additionalPlugins: [
+      'workflow-api',
+      'workflow-cps-global-lib',
+      'workflow-cps',
+      'workflow-durable-task-step',
+      'workflow-job',
+      'workflow-scm-step',
+      'workflow-step-api',
+      'workflow-support',
+      'workflow-multibranch',
+      'pipeline-stage-step',
+      'pipeline-stage-view',
+      'pipeline-input-step',
+      'pipeline-build-step',
+      'pipeline-rest-api',
+      'pipeline-model-definition',
+      'lockable-resources',
+      'junit',
+      'credentials',
+      'ssh-credentials',
+      'script-security',
+      'structs',
+  ]
 
   # Don't use controller for builds
   numExecutors: 0
@@ -27,6 +56,9 @@ controller:
 
   JCasC:
     defaultConfig: true
+    security:
+      downloadSettings:
+        useBrowser: false
     configScripts:
       welcome-message: |
         jenkins:
@@ -45,7 +77,7 @@ controller:
       # We already mounted this PATH on the controller-agent. Still, "docker.inside {}" fails in pipeline?
       # Why? The docker pipeline plugin seems to set an empty environment: https://github.com/jenkinsci/docker-workflow-plugin/blob/docker-workflow-1.25/src/main/java/org/jenkinsci/plugins/docker/workflow/client/DockerClient.java#L261
       # Workaround: Set the ENV in the container:
-      value: /usr/local/openjdk-8/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/tmp/docker
+      value: /opt/java/openjdk/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/tmp/docker
       
   customInitContainers:
     # Create Jenkins agent working dir explicitly. Otherwise it seems to be owned by root

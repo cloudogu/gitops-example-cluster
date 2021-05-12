@@ -7,7 +7,7 @@ if [[ -z ${PLAYGROUND_DIR+x} ]]; then
   PLAYGROUND_DIR="$(cd "${BASEDIR}" && cd .. && cd .. && pwd)"
 fi
 
-JENKINS_HELM_CHART_VERSION=3.1.9
+JENKINS_HELM_CHART_VERSION=3.3.14
 
 SET_USERNAME="admin"
 SET_PASSWORD="admin"
